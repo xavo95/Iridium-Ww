@@ -3,11 +3,12 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"io/ioutil"
+	"log"
+
 	"github.com/jhump/protoreflect/desc"
 	"github.com/jhump/protoreflect/desc/protoparse"
 	"github.com/jhump/protoreflect/dynamic"
-	"io/ioutil"
-	"log"
 )
 
 var msgMap = make(map[string]*desc.MessageDescriptor)
@@ -26,11 +27,8 @@ func InitProto() {
 		packetNameMap[v] = k
 	}
 
-	protoParser.ImportPaths = []string{"./data/proto/"}
-	for _, v := range packetIdMap {
-		LoadProto(v)
-	}
-
+	protoParser.ImportPaths = []string{"./data/"}
+	LoadProto("WutheringWaves")
 }
 
 func LoadProto(protoName string) {
@@ -40,7 +38,9 @@ func LoadProto(protoName string) {
 		return
 	}
 
-	msgMap[protoName] = fileDesc[0].FindMessage(protoName)
+	for _, msg := range fileDesc[0].GetMessageTypes() {
+		msgMap[msg.GetName()] = msg
+	}
 }
 
 func GetProtoById(id uint16) *desc.MessageDescriptor {

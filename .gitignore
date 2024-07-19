@@ -1,7 +1,9 @@
 /build
 /vendor
+/frontend
 
-/data
+/data/proto
+/data/packetIds.json
 
 .DS_Store
 
