@@ -1,4 +1,4 @@
-# Iridium-NG
+# Iridium-Ww
 
 A KCP packet sniffer + visualizer in one, backend rewritten in Go.
 
@@ -11,7 +11,8 @@ A KCP packet sniffer + visualizer in one, backend rewritten in Go.
 0. 往 `data/` 目录放入 `packetIds.json`, `privateKey.pem` 和 `WutheringWaves.proto` 文件.
 1. 确保你已安装 [Npcap driver](https://npcap.com/#download) 或 wireshark.
 2. 使用命令 `-l` 列出电脑上所有网卡，编辑 `config.json` 设置网卡设备, 或者使用命令 `-ip 192.x.x.x` 自动通过ip寻找设备.
-3. 打开 http://localhost:1984/, 
+3. 修改`config.json`中的 `minPort` 和 `maxPort` 设置端口范围
+4. 打开 http://localhost:1984/, 
 
 **注意：在进门之前开始抓包**
 

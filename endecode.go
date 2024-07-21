@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/base64"
 	"encoding/binary"
 	"log"
 )
@@ -15,6 +14,7 @@ type PackMsg struct {
 	Crc32     uint32
 	ProtoLen  uint16
 	ProtoData []byte
+	MsgData   []byte
 }
 
 func DecodeLoop(buffer *readStream, kcpMsgList *[]*PackMsg) {
@@ -25,14 +25,12 @@ func DecodeLoop(buffer *readStream, kcpMsgList *[]*PackMsg) {
 		return
 	}
 	lenth := binary.LittleEndian.Uint16(lenBytes)
-	if lenth > 2000 {
-		buffer.get()
-		return
-	}
 	if uint16(len(buffer.data)) < lenth+3 {
-		log.Printf("packet len len:%v\n", lenth+3)
+		// log.Printf("packet len :%v\n", lenth+3)
 		return
 	}
+	msgData := make([]byte, lenth+3)
+	copy(msgData, buffer.data[:lenth+3])
 	buffer.del(3)
 	msgTypeBytes := buffer.next(1)
 	msgType := msgTypeBytes[0]
@@ -55,8 +53,8 @@ func DecodeLoop(buffer *readStream, kcpMsgList *[]*PackMsg) {
 	} else {
 		detaLength = lenth - 11
 	}
-	msgBytes := buffer.next(int(detaLength))
-	cmdName := GetProtoNameById(cmdId)
+	msgBytes := buffer.next(detaLength)
+	// cmdName := GetProtoNameById(cmdId)
 	kcpMsg := &PackMsg{
 		PackLen:   lenth,
 		MsgType:   int(msgType),
@@ -66,10 +64,15 @@ func DecodeLoop(buffer *readStream, kcpMsgList *[]*PackMsg) {
 		Crc32:     receivedCrc32,
 		ProtoLen:  detaLength,
 		ProtoData: msgBytes,
+		MsgData:   msgData,
+	}
+	crc32 := crc32Hash(msgBytes)
+	if crc32 != receivedCrc32 {
+		log.Printf("crc32 inconsistent:%v\n", crc32)
 	}
 	*kcpMsgList = append(*kcpMsgList, kcpMsg)
-	log.Printf("cmdName:%s", cmdName)
-	log.Printf("lenth:%v,msgType:%v,seqNo:%v,rpcId:%v,cmdId:%v,receivedCrc32:%v,detaLength:%v,msg:%s", lenth, msgType, seqNo, rpcId, cmdId, receivedCrc32, detaLength, base64.StdEncoding.EncodeToString(msgBytes))
+	// log.Printf("cmdName:%s", cmdName)
+	// log.Printf("lenth:%v,msgType:%v,seqNo:%v,rpcId:%v,cmdId:%v,receivedCrc32:%v,detaLength:%v,msg:%s", lenth, msgType, seqNo, rpcId, cmdId, receivedCrc32, detaLength, base64.StdEncoding.EncodeToString(msgBytes))
 	// 有不止一个包 递归解析
 	if uint16(len(buffer.data)) > lenth+3 {
 		DecodeLoop(buffer, kcpMsgList)

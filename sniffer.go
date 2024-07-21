@@ -4,6 +4,7 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"log"
 	"os"
@@ -113,7 +114,8 @@ func startSniffer() {
 	packetSource.NoCopy = true
 
 	kcpMap = make(map[string]*kcp.KCP)
-	buffer = &readStream{}
+	cbuffer = &readStream{md5List: make(map[string]string)}
+	sbuffer = &readStream{md5List: make(map[string]string)}
 
 	var pcapWriter *pcapgo.NgWriter
 	if pcapFile != nil {
@@ -134,7 +136,7 @@ func startSniffer() {
 		capTime := packet.Metadata().Timestamp
 		data := packet.ApplicationLayer().Payload()
 		udp := packet.TransportLayer().(*layers.UDP)
-		fromServer := 13100 <= udp.SrcPort && udp.SrcPort <= 13120
+		fromServer := config.MinPort <= udp.SrcPort && udp.SrcPort <= config.MaxPort
 
 		if len(data) < 24 {
 			handleSpecialPacket(data, fromServer, capTime)
@@ -146,7 +148,8 @@ func startSniffer() {
 }
 
 type readStream struct {
-	data []byte
+	data    []byte
+	md5List map[string]string
 }
 
 func (db *readStream) add(newData []byte) {
@@ -167,8 +170,8 @@ func (db *readStream) del(length int) {
 	db.data = db.data[length:]
 }
 
-func (db *readStream) next(length int) []byte {
-	if len(db.data) < length {
+func (db *readStream) next(length uint16) []byte {
+	if uint16(len(db.data)) < length {
 		return nil
 	}
 	readData := db.data[:length]
@@ -184,14 +187,21 @@ func (db *readStream) get() []byte {
 }
 
 var convId uint32
-var buffer *readStream
+var cbuffer *readStream
+var sbuffer *readStream
 
 func handleKcp(data []byte, fromServer bool, capTime time.Time) {
 	// data := reformData(buffer)
 	conv := binary.LittleEndian.Uint32(data[:4])
 	convId = conv
-	buffer.add(data)
-	handleProtoPacket(buffer, fromServer, capTime)
+	data = delKcpHD(data)
+	if fromServer {
+		addBuffer(data, sbuffer)
+	} else {
+		addBuffer(data, cbuffer)
+	}
+
+	handleProtoPacket(fromServer, capTime)
 
 	// key := strconv.Itoa(int(conv))
 	// if fromServer {
@@ -223,30 +233,42 @@ func handleSpecialPacket(data []byte, fromServer bool, timestamp time.Time) {
 	sessionKey = nil
 }
 
-func handleProtoPacket(buffer *readStream, fromServer bool, timestamp time.Time) {
+func handleProtoPacket(fromServer bool, timestamp time.Time) {
 	// buffer.add(data)
 	msgList := make([]*PackMsg, 0)
-	DecodeLoop(buffer, &msgList)
+	DecodeLoop(cbuffer, &msgList)
+	DecodeLoop(sbuffer, &msgList)
 
 	for _, msg := range msgList {
+		var data []byte
 		if msg.CmdId != ProtoKeyResponse && msg.CmdId != ProtoKeyRequest {
 			if sessionKey != nil {
-				msg.ProtoData, _ = AesECBDecrypt(msg.ProtoData, sessionKey)
+				data, _ = AesECBDecrypt(msg.ProtoData, sessionKey)
 				if err != nil {
 					log.Printf("AesECBDecrypt error:%s\n", err.Error())
 				}
 			}
 		}
+		if data == nil {
+			data = msg.ProtoData
+		}
 		var objectJson interface{}
 		packetId := msg.CmdId
 		if packetId == ProtoKeyResponse {
-			objectJson = handleProtoKeyResponsePacket(msg.ProtoData, packetId, objectJson)
+			objectJson = handleProtoKeyResponsePacket(data, packetId, objectJson)
 		} else {
 			// protoData := removeHeaderForParse(msg.ProtoData)
-			objectJson = parseProtoToInterface(packetId, msg.ProtoData)
+			objectJson = parseProtoToInterface(packetId, data)
 		}
 
-		buildPacketToSend(msg.ProtoData, fromServer, timestamp, packetId, objectJson)
+		if msg.CmdId == 104 {
+			aeskey := sessionKey
+			log.Printf("key:%s", hex.EncodeToString(aeskey))
+			log.Printf("protoMsg:%s", base64.StdEncoding.EncodeToString(msg.ProtoData))
+			log.Printf("msg:%s,decryptMsg:%s", base64.StdEncoding.EncodeToString(msg.MsgData), base64.StdEncoding.EncodeToString(data))
+		}
+
+		buildPacketToSend(data, fromServer, timestamp, packetId, objectJson)
 	}
 }
 
