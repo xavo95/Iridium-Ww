@@ -40,6 +40,7 @@ var ProtoKeyResponse uint16
 var ProtoKeyRequest uint16
 
 var privateKey *rsa.PrivateKey
+var aesEcb *AES
 var sessionKey []byte
 
 var captureHandler *pcap.Handle
@@ -230,7 +231,7 @@ func handleKcp(data []byte, fromServer bool, capTime time.Time) {
 }
 
 func handleSpecialPacket(data []byte, fromServer bool, timestamp time.Time) {
-	sessionKey = nil
+	aesEcb = nil
 }
 
 func handleProtoPacket(fromServer bool, timestamp time.Time) {
@@ -242,8 +243,8 @@ func handleProtoPacket(fromServer bool, timestamp time.Time) {
 	for _, msg := range msgList {
 		var data []byte
 		if msg.CmdId != ProtoKeyResponse && msg.CmdId != ProtoKeyRequest {
-			if sessionKey != nil {
-				data, _ = AesECBDecrypt(msg.ProtoData, sessionKey)
+			if aesEcb != nil && msg.ProtoLen != 0 {
+				data = aesEcb.DecryptECB(msg.ProtoData, PKCS7Unpadding)
 				if err != nil {
 					log.Printf("AesECBDecrypt error:%s\n", err.Error())
 				}
@@ -294,6 +295,10 @@ func handleProtoKeyResponsePacket(data []byte, packetId uint16, objectJson inter
 	sessionKey, err = RsaDecrypt(key, privateKey)
 	if err != nil {
 		log.Printf("DecryptPKCS1v15 Key error:%s\n", err)
+	}
+	aesEcb, err = NewAES(sessionKey)
+	if err != nil {
+		log.Printf("%s", err)
 	}
 
 	return objectJson
