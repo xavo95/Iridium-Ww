@@ -55,6 +55,7 @@ func DecodeLoop(buffer *readStream, kcpMsgList *[]*PackMsg) {
 	}
 	if uint16(len(buffer.data)) < detaLength {
 		// log.Printf("packet len :%v\n", lenth+3)
+		buffer.get()
 		return
 	}
 	msgBytes := buffer.next(detaLength)
@@ -70,10 +71,12 @@ func DecodeLoop(buffer *readStream, kcpMsgList *[]*PackMsg) {
 		MsgData:   msgData,
 	}
 	crc32 := crc32Hash(msgBytes)
-	if crc32 != receivedCrc32 {
+	if crc32 == receivedCrc32 {
+		*kcpMsgList = append(*kcpMsgList, kcpMsg)
+	} else {
 		log.Printf("crc32 inconsistent:%v\n", crc32)
 	}
-	*kcpMsgList = append(*kcpMsgList, kcpMsg)
+
 	// log.Printf("cmdName:%s", GetProtoNameById(cmdId))
 	// log.Printf("lenth:%v,msgType:%v,seqNo:%v,rpcId:%v,cmdId:%v,receivedCrc32:%v,detaLength:%v,msg:%s", lenth, msgType, seqNo, rpcId, cmdId, receivedCrc32, detaLength, base64.StdEncoding.EncodeToString(msgBytes))
 	// 有不止一个包 递归解析
