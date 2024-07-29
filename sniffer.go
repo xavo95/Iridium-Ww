@@ -248,6 +248,7 @@ func handleProtoPacket(fromServer bool, timestamp time.Time) {
 				if err != nil {
 					log.Printf("AesECBDecrypt error:%s\n", err.Error())
 				}
+				// TODO 此处需要对 data 进行一次处理,由于某些原因我无法公开
 			}
 		}
 		if data == nil {
