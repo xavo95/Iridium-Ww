@@ -25,6 +25,10 @@ func DecodeLoop(buffer *readStream, kcpMsgList *[]*PackMsg) {
 		return
 	}
 	lenth := binary.LittleEndian.Uint16(lenBytes)
+	if lenth >= 10000 {
+		buffer.get()
+		return
+	}
 	if uint16(len(buffer.data)) < lenth+3 {
 		// log.Printf("packet len :%v\n", lenth+3)
 		return
@@ -44,6 +48,7 @@ func DecodeLoop(buffer *readStream, kcpMsgList *[]*PackMsg) {
 	}
 	cmdIdBytes := buffer.next(2)
 	cmdId := binary.LittleEndian.Uint16(cmdIdBytes)
+	// log.Printf("msg:%s", GetProtoNameById(cmdId))
 
 	crc32Bytes := buffer.next(4)
 	receivedCrc32 := binary.LittleEndian.Uint32(crc32Bytes)
@@ -55,7 +60,7 @@ func DecodeLoop(buffer *readStream, kcpMsgList *[]*PackMsg) {
 	}
 	if uint16(len(buffer.data)) < detaLength {
 		// log.Printf("packet len :%v\n", lenth+3)
-		buffer.get()
+		// buffer.get()
 		return
 	}
 	msgBytes := buffer.next(detaLength)
@@ -75,12 +80,14 @@ func DecodeLoop(buffer *readStream, kcpMsgList *[]*PackMsg) {
 		*kcpMsgList = append(*kcpMsgList, kcpMsg)
 	} else {
 		log.Printf("crc32 inconsistent:%v\n", crc32)
+		// buffer.get()
+		// return
 	}
 
 	// log.Printf("cmdName:%s", GetProtoNameById(cmdId))
 	// log.Printf("lenth:%v,msgType:%v,seqNo:%v,rpcId:%v,cmdId:%v,receivedCrc32:%v,detaLength:%v,msg:%s", lenth, msgType, seqNo, rpcId, cmdId, receivedCrc32, detaLength, base64.StdEncoding.EncodeToString(msgBytes))
 	// 有不止一个包 递归解析
-	if uint16(len(buffer.data)) > lenth+3 {
+	if uint16(len(buffer.data)) > 14 {
 		DecodeLoop(buffer, kcpMsgList)
 	}
 }

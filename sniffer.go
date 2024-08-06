@@ -154,6 +154,9 @@ type readStream struct {
 }
 
 func (db *readStream) add(newData []byte) {
+	if db.data == nil {
+		db.data = make([]byte, 0)
+	}
 	db.data = append(db.data, newData...)
 }
 
@@ -235,7 +238,6 @@ func handleSpecialPacket(data []byte, fromServer bool, timestamp time.Time) {
 }
 
 func handleProtoPacket(fromServer bool, timestamp time.Time) {
-	// buffer.add(data)
 	msgList := make([]*PackMsg, 0)
 	DecodeLoop(cbuffer, &msgList)
 	DecodeLoop(sbuffer, &msgList)
