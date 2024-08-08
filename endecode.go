@@ -33,29 +33,34 @@ type PackMsg struct {
 }
 
 const (
-	PacketMaxLen = math.MaxUint16 // 最大应用层包长度
+	PacketMaxLen = math.MaxUint16
 )
 
-func DecodeLoop(data []byte, kcpMsgList *[]*PackMsg, aesEcb *AES) []byte {
-	// 长度太短
+var recursionsNum = 0
+
+func DecodeLoop(key string, kcpMsgList *[]*PackMsg, aesEcb *AES) {
+	data := getData(key)
+	if recursionsNum >= 300 {
+		log.Printf("recursionsNum:%v\n", recursionsNum)
+		delData(key, uint16(len(data)))
+		return
+	}
 	if len(data) < 14 {
-		log.Println("packet len less than 14 byte")
-		return data
+		return
 	}
 	i := 0
-	// 检查长度
 	msgLen := binary.LittleEndian.Uint16(data[i:])
 	if msgLen > PacketMaxLen {
 		log.Println("packet len too long")
-		return make([]byte, 0)
+		delData(key, uint16(len(data)))
+		return
 	}
 	if uint16(len(data)) < msgLen+3 {
-		// log.Println("packet len not enough")
-		return data
+		return
 	}
+	recursionsNum++
 	packetLen := msgLen + 3
 	i += 3
-	// 消息类型
 	msgType := data[i]
 	i += 1
 	seqNo := binary.LittleEndian.Uint32(data[i:])
@@ -65,25 +70,20 @@ func DecodeLoop(data []byte, kcpMsgList *[]*PackMsg, aesEcb *AES) []byte {
 		rpcId = binary.LittleEndian.Uint16(data[i:])
 		i += 2
 	}
-	// 二次验证数据长度
 	if len(data) < i+6 {
-		log.Printf("packet len less than %v byte\n", i+6)
-		return data
+		return
 	}
-	// 协议号
 	cmdId := binary.LittleEndian.Uint16(data[i:])
 	i += 2
 	receivedCrc32 := binary.LittleEndian.Uint32(data[i:])
 	i += 4
 	detaLength := packetLen - uint16(i)
-	// 数据
 	msgBytes := data[i:packetLen]
-	// crc32 验证
 	if crc32Hash(msgBytes) != receivedCrc32 {
 		log.Printf("kcp msg crc32 checksum error")
-		return data[packetLen:] // 丢弃数据
+		delData(key, uint16(len(data)))
+		return
 	}
-	// proto数据
 	var protoData []byte
 	if aesEcb != nil &&
 		detaLength != 0 &&
@@ -94,7 +94,6 @@ func DecodeLoop(data []byte, kcpMsgList *[]*PackMsg, aesEcb *AES) []byte {
 	} else {
 		protoData = msgBytes
 	}
-	// 返回数据
 	kcpMsg := &PackMsg{
 		PackLen:   packetLen,
 		MsgType:   int(msgType),
@@ -106,10 +105,9 @@ func DecodeLoop(data []byte, kcpMsgList *[]*PackMsg, aesEcb *AES) []byte {
 		ProtoData: protoData,
 	}
 	*kcpMsgList = append(*kcpMsgList, kcpMsg)
-	// 有不止一个包 递归解析
-	data = data[packetLen:]
+	delData(key, packetLen)
+	recursionsNum = 0
 	if uint16(len(data)) > 14 {
-		DecodeLoop(data, kcpMsgList, aesEcb)
+		DecodeLoop(key, kcpMsgList, aesEcb)
 	}
-	return data
 }

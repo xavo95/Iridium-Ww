@@ -30,3 +30,35 @@ func crc32Hash(data []byte) uint32 {
 	Hash32.Write(data)
 	return Hash32.Sum32()
 }
+
+var dataMap map[string][]byte
+
+func addDataMap(key string, data []byte) {
+	if dataMap == nil {
+		dataMap = make(map[string][]byte)
+	}
+	if dataMap[key] == nil {
+		dataMap[key] = make([]byte, 0)
+	}
+	dataMap[key] = append(dataMap[key], data...)
+}
+
+func getData(key string) []byte {
+	if dataMap == nil {
+		dataMap = make(map[string][]byte)
+	}
+	if dataMap[key] == nil {
+		dataMap[key] = make([]byte, 0)
+	}
+	return dataMap[key]
+}
+
+func delData(key string, len uint16) {
+	if dataMap == nil {
+		dataMap = make(map[string][]byte)
+	}
+	if dataMap[key] == nil {
+		dataMap[key] = make([]byte, 0)
+	}
+	dataMap[key] = dataMap[key][len:]
+}

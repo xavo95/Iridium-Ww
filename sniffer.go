@@ -158,19 +158,33 @@ func handleKcp(data []byte, fromServer bool, capTime time.Time) {
 	for size > 0 {
 		kcpBytes := make([]byte, size)
 		kcpInstance.Recv(kcpBytes)
-		handleProtoPacket(kcpBytes, fromServer, capTime)
+		addDataMap(key, kcpBytes)
 		size = kcpInstance.PeekSize()
 	}
+	handleProtoPacket(key, fromServer, capTime)
 	kcpInstance.Update()
 }
 
 func handleSpecialPacket(data []byte, fromServer bool, timestamp time.Time) {
-	aesEcb = nil
+	if len(data) < 1 {
+		return
+	}
+	switch data[0] {
+	case 237:
+		buildPacketToSend(data, fromServer, timestamp, 0, "Hamdshanke pls.")
+		break
+	case 238:
+		aesEcb = nil
+		buildPacketToSend(data, fromServer, timestamp, 0, "Hamdshanke estamblished.")
+		break
+	default:
+		buildPacketToSend(data, fromServer, timestamp, 0, "Hamdshanke error.")
+	}
 }
 
-func handleProtoPacket(data []byte, fromServer bool, timestamp time.Time) {
+func handleProtoPacket(key string, fromServer bool, timestamp time.Time) {
 	msgList := make([]*PackMsg, 0)
-	DecodeLoop(data, &msgList, aesEcb)
+	DecodeLoop(key, &msgList, aesEcb)
 	for _, msg := range msgList {
 		var objectJson interface{}
 		packetId := msg.CmdId

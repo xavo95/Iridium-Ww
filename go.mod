@@ -1,6 +1,6 @@
 module github.com/Akka0/Iridium-NG
 
-go 1.18
+go 1.21
 
 require (
 	github.com/fatih/color v1.13.0
@@ -8,7 +8,6 @@ require (
 	github.com/gin-gonic/gin v1.8.0
 	github.com/google/gopacket v1.1.19
 	github.com/jhump/protoreflect v1.12.0
-	github.com/xtaci/kcp-go v5.4.20+incompatible
 )
 
 require (
@@ -19,8 +18,8 @@ require (
 	github.com/goccy/go-json v0.9.7 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/cpuid/v2 v2.0.6 // indirect
-	github.com/klauspost/reedsolomon v1.9.16 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.6 // indirect
+	github.com/klauspost/reedsolomon v1.12.3 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/mattn/go-colorable v0.1.9 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
@@ -32,10 +31,10 @@ require (
 	github.com/templexxx/xor v0.0.0-20191217153810-f85b25db303b // indirect
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	github.com/ugorji/go/codec v1.2.7 // indirect
-	github.com/xtaci/lossyconn v0.0.0-20200209145036-adba10fffc37 // indirect
+	github.com/xtaci/kcp-go v5.4.20+incompatible // indirect
 	golang.org/x/crypto v0.0.0-20220525230936-793ad666bf5e // indirect
 	golang.org/x/net v0.0.0-20220607020251-c690dde0001d // indirect
-	golang.org/x/sys v0.0.0-20220608164250-635b8c9b7f68 // indirect
+	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013 // indirect
 	google.golang.org/protobuf v1.28.0 // indirect
