@@ -4,7 +4,6 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"log"
 	"os"
@@ -29,13 +28,6 @@ type Packet struct {
 	Raw        []byte      `json:"raw"`
 }
 
-type UniCmdItem struct {
-	PacketId   uint16      `json:"packetId"`
-	PacketName string      `json:"packetName"`
-	Object     interface{} `json:"object"`
-	Raw        []byte      `json:"raw"`
-}
-
 var ProtoKeyResponse uint16
 var ProtoKeyRequest uint16
 
@@ -47,7 +39,6 @@ var captureHandler *pcap.Handle
 var kcpMap map[string]*kcp.KCP
 var packetFilter = make(map[string]bool)
 var pcapFile *os.File
-var err error
 
 func openPcap(fileName string) {
 	readKeys()
@@ -115,8 +106,6 @@ func startSniffer() {
 	packetSource.NoCopy = true
 
 	kcpMap = make(map[string]*kcp.KCP)
-	cbuffer = &readStream{md5List: make(map[string]string)}
-	sbuffer = &readStream{md5List: make(map[string]string)}
 
 	var pcapWriter *pcapgo.NgWriter
 	if pcapFile != nil {
@@ -148,128 +137,47 @@ func startSniffer() {
 	}
 }
 
-type readStream struct {
-	data    []byte
-	md5List map[string]string
-}
-
-func (db *readStream) add(newData []byte) {
-	if db.data == nil {
-		db.data = make([]byte, 0)
-	}
-	db.data = append(db.data, newData...)
-}
-
-func (db *readStream) read(length int) []byte {
-	if len(db.data) < length {
-		return nil
-	}
-	return db.data[:length]
-}
-
-func (db *readStream) del(length int) {
-	if len(db.data) < length || length <= 0 {
-		return
-	}
-	db.data = db.data[length:]
-}
-
-func (db *readStream) next(length uint16) []byte {
-	if uint16(len(db.data)) < length {
-		return nil
-	}
-	readData := db.data[:length]
-	db.data = db.data[length:]
-	return readData
-}
-
-func (db *readStream) get() []byte {
-	length := len(db.data)
-	readData := db.data[:length]
-	db.data = db.data[length:]
-	return readData
-}
-
-var convId uint32
-var cbuffer *readStream
-var sbuffer *readStream
-
 func handleKcp(data []byte, fromServer bool, capTime time.Time) {
-	// data := reformData(buffer)
 	conv := binary.LittleEndian.Uint32(data[:4])
-	convId = conv
-	data = delKcpHD(data)
+	key := strconv.Itoa(int(conv))
 	if fromServer {
-		addBuffer(data, sbuffer)
+		key += "svr"
 	} else {
-		addBuffer(data, cbuffer)
+		key += "cli"
 	}
 
-	handleProtoPacket(fromServer, capTime)
+	if _, ok := kcpMap[key]; !ok {
+		kcpInstance := kcp.NewKCP(conv, func(buf []byte, size int) {})
+		kcpInstance.WndSize(1024, 1024)
+		kcpMap[key] = kcpInstance
+	}
+	kcpInstance := kcpMap[key]
+	_ = kcpInstance.Input(data, true, true)
 
-	// key := strconv.Itoa(int(conv))
-	// if fromServer {
-	// 	key += "svr"
-	// } else {
-	// 	key += "cli"
-	// }
-	//
-	// if _, ok := kcpMap[key]; !ok {
-	// 	kcpInstance := kcp.NewKCP(conv, func(buf []byte, size int) {})
-	// 	kcpInstance.WndSize(1024, 1024)
-	// 	kcpMap[key] = kcpInstance
-	// }
-	// kcpInstance := kcpMap[key]
-	// _ = kcpInstance.Input(data, true, true)
-	//
-	// size := kcpInstance.PeekSize()
-	// for size > 0 {
-	// 	kcpBytes := make([]byte, size)
-	// 	kcpInstance.Recv(kcpBytes)
-	// 	buffer.add(kcpBytes)
-	// 	handleProtoPacket(buffer, fromServer, capTime)
-	// 	size = kcpInstance.PeekSize()
-	// }
-	// kcpInstance.Update()
+	size := kcpInstance.PeekSize()
+	for size > 0 {
+		kcpBytes := make([]byte, size)
+		kcpInstance.Recv(kcpBytes)
+		handleProtoPacket(kcpBytes, fromServer, capTime)
+		size = kcpInstance.PeekSize()
+	}
+	kcpInstance.Update()
 }
 
 func handleSpecialPacket(data []byte, fromServer bool, timestamp time.Time) {
 	aesEcb = nil
 }
 
-func handleProtoPacket(fromServer bool, timestamp time.Time) {
+func handleProtoPacket(data []byte, fromServer bool, timestamp time.Time) {
 	msgList := make([]*PackMsg, 0)
-	DecodeLoop(cbuffer, &msgList)
-	DecodeLoop(sbuffer, &msgList)
-
+	DecodeLoop(data, &msgList, aesEcb)
 	for _, msg := range msgList {
-		var data []byte
-		if msg.CmdId != ProtoKeyResponse && msg.CmdId != ProtoKeyRequest {
-			if aesEcb != nil && msg.ProtoLen != 0 {
-				data = aesEcb.DecryptECB(msg.ProtoData, PKCS7Unpadding)
-				if err != nil {
-					log.Printf("AesECBDecrypt error:%s\n", err.Error())
-				}
-				// TODO 此处需要对 data 进行一次处理,由于某些原因我无法公开
-			}
-		}
-		if data == nil {
-			data = msg.ProtoData
-		}
 		var objectJson interface{}
 		packetId := msg.CmdId
 		if packetId == ProtoKeyResponse {
-			objectJson = handleProtoKeyResponsePacket(data, packetId, objectJson)
+			objectJson = handleProtoKeyResponsePacket(msg.ProtoData, packetId, objectJson)
 		} else {
-			// protoData := removeHeaderForParse(msg.ProtoData)
-			objectJson = parseProtoToInterface(packetId, data)
-		}
-
-		if msg.CmdId == 104 {
-			aeskey := sessionKey
-			log.Printf("key:%s", hex.EncodeToString(aeskey))
-			log.Printf("protoMsg:%s", base64.StdEncoding.EncodeToString(msg.ProtoData))
-			log.Printf("msg:%s,decryptMsg:%s", base64.StdEncoding.EncodeToString(msg.MsgData), base64.StdEncoding.EncodeToString(data))
+			objectJson = parseProtoToInterface(packetId, msg.ProtoData)
 		}
 
 		buildPacketToSend(data, fromServer, timestamp, packetId, objectJson)
@@ -277,7 +185,6 @@ func handleProtoPacket(fromServer bool, timestamp time.Time) {
 }
 
 func handleProtoKeyResponsePacket(data []byte, packetId uint16, objectJson interface{}) interface{} {
-	// data = removeMagic(data)
 	dMsg, err := parseProto(packetId, data)
 	if err != nil {
 		log.Println("Could not parse ProtoKeyResponse proto", err)
@@ -335,13 +242,13 @@ func logPacket(packet *Packet) {
 		from = "[Server]"
 	}
 	forward := ""
-	if strings.Contains(packet.PacketName, "ScRsp") {
+	if strings.Contains(packet.PacketName, "Response") {
 		forward = "<--"
-	} else if strings.Contains(packet.PacketName, "CsReq") {
+	} else if strings.Contains(packet.PacketName, "Request") {
 		forward = "-->"
 	} else if strings.Contains(packet.PacketName, "Notify") && packet.FromServer {
 		forward = "<-i"
-	} else if strings.Contains(packet.PacketName, "Notify") {
+	} else if strings.Contains(packet.PacketName, "Push") {
 		forward = "i->"
 	}
 
