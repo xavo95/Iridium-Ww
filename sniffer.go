@@ -180,7 +180,7 @@ func handleProtoPacket(data []byte, fromServer bool, timestamp time.Time) {
 			objectJson = parseProtoToInterface(packetId, msg.ProtoData)
 		}
 
-		buildPacketToSend(data, fromServer, timestamp, packetId, objectJson)
+		buildPacketToSend(msg.ProtoData, fromServer, timestamp, packetId, objectJson)
 	}
 }
 
