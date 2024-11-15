@@ -328,6 +328,14 @@ func (a *AES) decryptBlock(state []byte, roundKeys []uint32) {
 	a.addRoundKey(state, roundKeys[0:4])
 }
 
+func (a *AES) KeyXor(seqNo uint32, data []byte) {
+	index := int(seqNo) & 0x8000001f
+	if index < 0 {
+		index = (index - 1 | 0xffffffe0) + 1
+	}
+	data[int(seqNo)%len(data)] ^= a.key[index]
+}
+
 // inc increments the right-most 32 bits of the bit string X,
 // and it returns X.
 func inc32(X []byte) []byte {

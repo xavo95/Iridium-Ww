@@ -1,7 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"compress/zlib"
 	"encoding/binary"
+	"fmt"
+	"io"
 	"log"
 	"math"
 )
@@ -61,7 +65,8 @@ func DecodeLoop(key string, kcpMsgList *[]*PackMsg, aesEcb *AES) {
 	recursionsNum++
 	packetLen := msgLen + 3
 	i += 3
-	msgType := data[i]
+	msgType := data[i] & 0x0f
+	isCompressed := data[i] & 0xf0
 	i += 1
 	seqNo := binary.LittleEndian.Uint32(data[i:])
 	i += 4
@@ -77,10 +82,16 @@ func DecodeLoop(key string, kcpMsgList *[]*PackMsg, aesEcb *AES) {
 	i += 2
 	receivedCrc32 := binary.LittleEndian.Uint32(data[i:])
 	i += 4
+	var decompressedSize uint32
+	if (isCompressed & 0x10) == 0x10 {
+		decompressedSize = binary.LittleEndian.Uint32(data[i:])
+		i += 4
+	}
 	detaLength := packetLen - uint16(i)
 	msgBytes := data[i:packetLen]
-	if crc32Hash(msgBytes) != receivedCrc32 {
-		log.Printf("kcp msg crc32 checksum error")
+	computedCrc := crc32Hash(msgBytes)
+	if computedCrc != receivedCrc32 {
+		fmt.Printf("CRC error: expected: %d, got: %d", computedCrc, receivedCrc32)
 		delData(key, uint16(len(data)))
 		return
 	}
@@ -90,9 +101,25 @@ func DecodeLoop(key string, kcpMsgList *[]*PackMsg, aesEcb *AES) {
 		cmdId != ProtoKeyResponse &&
 		cmdId != ProtoKeyRequest {
 		protoData = aesEcb.DecryptECB(msgBytes, PKCS7Unpadding)
-		// TODO 此处需要对 data 进行一次处理,由于某些原因我无法公开
+		aesEcb.KeyXor(seqNo, protoData)
 	} else {
 		protoData = msgBytes
+	}
+	if (isCompressed & 0x10) == 0x10 {
+		b := bytes.NewBuffer(protoData)
+		z, err := zlib.NewReader(b)
+		if err != nil {
+			delData(key, uint16(len(data)))
+			return
+		}
+		defer z.Close()
+		p, err := io.ReadAll(z)
+		if err != nil {
+			delData(key, uint16(len(data)))
+			return
+		}
+		protoData = p
+		detaLength = uint16(decompressedSize)
 	}
 	kcpMsg := &PackMsg{
 		PackLen:   packetLen,
