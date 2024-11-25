@@ -21,7 +21,7 @@ func RsaParsePrivKey(privKeyPem []byte) (*rsa.PrivateKey, error) {
 	return privKey, nil
 }
 
-func RsaDecrypt(encData []byte, privKey *rsa.PrivateKey) (decData []byte, err error) {
+func RsaDecryptPrivKey(encData []byte, privKey *rsa.PrivateKey) (decData []byte, err error) {
 	return rsa.DecryptPKCS1v15(rand.Reader, privKey, encData)
 }
 
