@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -95,8 +96,8 @@ func readKeys() {
 
 func startSniffer() {
 	defer captureHandler.Close()
-
-	err := captureHandler.SetBPFFilter("udp portrange 13100-13120")
+	expr := fmt.Sprintf("udp portrange %v-%v", config.MinPort, config.MaxPort)
+	err := captureHandler.SetBPFFilter(expr)
 	if err != nil {
 		log.Println("Could not set the filter of capture")
 		return
