@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -95,8 +96,8 @@ func readKeys() {
 
 func startSniffer() {
 	defer captureHandler.Close()
-
-	err := captureHandler.SetBPFFilter("udp portrange 13100-13120")
+	expr := fmt.Sprintf("udp portrange %v-%v", config.MinPort, config.MaxPort)
+	err := captureHandler.SetBPFFilter(expr)
 	if err != nil {
 		log.Println("Could not set the filter of capture")
 		return
@@ -201,24 +202,33 @@ func handleProtoPacket(key string, fromServer bool, timestamp time.Time) {
 func handleProtoKeyResponsePacket(data []byte, packetId uint16, objectJson interface{}) interface{} {
 	dMsg, err := parseProto(packetId, data)
 	if err != nil {
-		log.Println("Could not parse ProtoKeyResponse proto", err)
+		log.Printf("Could not parse ProtoKeyResponse proto Error:%s\n", err)
 		closeHandle()
 	}
 	oj, err := dMsg.MarshalJSON()
 	if err != nil {
-		log.Println("Could not parse ProtoKeyResponse proto", err)
+		log.Printf("Could not parse ProtoKeyResponse proto Error:%s\n", err)
 		closeHandle()
 	}
 	err = json.Unmarshal(oj, &objectJson)
 	if err != nil {
-		log.Println("Could not parse ProtoKeyResponse proto", err)
+		log.Printf("Could not parse ProtoKeyResponse proto Error:%s\n", err)
 		closeHandle()
 	}
-	x := objectJson.(map[string]interface{})
-	key, _ := base64.StdEncoding.DecodeString(x["key"].(string))
-	sessionKey, err = RsaDecrypt(key, privateKey)
+	req := objectJson.(map[string]interface{})
+	var key []byte
+	if reqKey := req["key"]; reqKey != nil {
+		key, _ = base64.StdEncoding.DecodeString(reqKey.(string))
+	} else if reqKey2 := req["Key"]; reqKey2 != nil {
+		key, _ = base64.StdEncoding.DecodeString(reqKey2.(string))
+	}
+	if len(key) == 0 {
+		log.Printf("ProtoKeyResponse Get Key Error:%s\n", err)
+		return objectJson
+	}
+	sessionKey, err = RsaDecryptPrivKey(key, privateKey)
 	if err != nil {
-		log.Printf("DecryptPKCS1v15 Key error:%s\n", err)
+		log.Printf("DecryptPKCS1v15 Key Error:%s\n", err)
 	}
 	aesEcb, err = NewAES(sessionKey)
 	if err != nil {
